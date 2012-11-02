@@ -1,0 +1,6 @@
+.DS_Store
+*.o
+*.d
+
+src/chuck.xcodeproj/project.xcworkspace
+src/chuck.xcodeproj/xcuserdata
