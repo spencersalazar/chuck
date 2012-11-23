@@ -497,6 +497,32 @@ void CK_DLL_CALL ck_add_ugen_ctrl( Chuck_DL_Query * query, f_ctrl ugen_ctrl, f_c
 
 
 
+void CK_DLL_CALL ck_add_ck_func(Chuck_DL_Query * query, f_chuck ckfun,
+                                const char * from_type)
+{
+    if( !query->curr_class )
+    {
+        // error
+        EM_error2( 0, "class import: ck_add_ck_fun invoked without begin_class..." );
+        return;
+    }
+    
+    Chuck_DL_Func * f = new Chuck_DL_Func;
+    f->name = std::string("@chuck");
+    f->ckfun = ckfun;
+    f->add_arg(from_type, "from");
+    f->type = query->curr_class->name;
+    
+    // SPENCERTODO: store in special vector instead
+    // for now, just store in mfuns so we don't have to add special handling
+    // to the entire type system
+    query->curr_class->mfuns.push_back(f);
+    
+    query->curr_func = NULL;
+}
+
+
+
 
 //-----------------------------------------------------------------------------
 // name: ck_end_class()
@@ -871,6 +897,7 @@ Chuck_DL_Query::Chuck_DL_Query( )
     add_ugen_func = ck_add_ugen_func;
     add_ugen_funcf = ck_add_ugen_funcf;
     add_ugen_ctrl = ck_add_ugen_ctrl;
+    add_ck_func = ck_add_ck_func;
     end_class = ck_end_class;
     create_main_thread_hook = ck_create_main_thread_hook;
     

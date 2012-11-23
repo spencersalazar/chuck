@@ -2350,6 +2350,26 @@ t_CKBOOL emit_engine_emit_op_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rhs, 
     }
 
     // TODO: check overloading of =>
+    
+    int len = right->info->obj_v_table.funcs.size();
+    for(int i = 0; i < len; i++)
+    {
+        Chuck_Func * f = right->info->obj_v_table.funcs[i];
+        // SPENCERTODO: better way of indicating => overloads than string comparison
+        if(f->code->native_func && f->name.find("@chuck") == 0 &&
+           f->def->arg_list)
+        {
+            Chuck_Type * ftype = f->def->arg_list->type;
+            if(isa(left, ftype))
+            {
+                emit->append(new Chuck_Instr_Reg_Push_Imm(f->vt_index));
+                emit->append(new Chuck_Instr_Generic_Link());
+                
+                return TRUE;
+            }
+        }
+    }
+    
     // TODO: deal with const
 
     // no match

@@ -192,6 +192,8 @@ typedef const Chuck_DL_Api::Api *CK_DL_API;
 // macro for defining ChucK DLL export uana tock functions
 // example: CK_DLL_TOCK(foo)
 #define CK_DLL_TOCK(name) CK_DLL_EXPORT(t_CKBOOL) name( Chuck_Object * SELF, Chuck_UAna * UANA, Chuck_UAnaBlobProxy * BLOB, Chuck_VM_Shred * SHRED, CK_DL_API API )
+// example: CK_DLL_CHUCK(foo)
+#define CK_DLL_CHUCK(name) CK_DLL_EXPORT(t_CKBOOL) name( Chuck_Object * SELF, Chuck_Object * FROM, Chuck_VM_Shred * SHRED, CK_DL_API API )
 
 
 // macros for DLL exports
@@ -227,6 +229,7 @@ typedef t_CKBOOL (CK_DLL_CALL * f_tickf)( Chuck_Object * SELF, SAMPLE * in, SAMP
 typedef t_CKVOID (CK_DLL_CALL * f_ctrl)( Chuck_Object * SELF, void * ARGS, Chuck_DL_Return * RETURN, Chuck_VM_Shred * SHRED, CK_DL_API API );
 typedef t_CKVOID (CK_DLL_CALL * f_cget)( Chuck_Object * SELF, void * ARGS, Chuck_DL_Return * RETURN, Chuck_VM_Shred * SHRED, CK_DL_API API );
 typedef t_CKBOOL (CK_DLL_CALL * f_pmsg)( Chuck_Object * SELF, const char * MSG, void * ARGS, Chuck_VM_Shred * SHRED, CK_DL_API API );
+typedef t_CKBOOL (CK_DLL_CALL * f_chuck)( Chuck_Object * SELF, Chuck_Object * FROM, Chuck_VM_Shred * SHRED, CK_DL_API API );
 // uana specific
 typedef t_CKBOOL (CK_DLL_CALL * f_tock)( Chuck_Object * SELF, Chuck_UAna * UANA, Chuck_UAnaBlobProxy * BLOB, Chuck_VM_Shred * SHRED, CK_DL_API API );
 // "main thread" hook
@@ -276,6 +279,8 @@ typedef void (CK_DLL_CALL * f_add_ugen_funcf)( Chuck_DL_Query * query, f_tickf t
 // ** add a ugen control
 typedef void (CK_DLL_CALL * f_add_ugen_ctrl)( Chuck_DL_Query * query, f_ctrl ctrl, f_cget cget, 
                                               const char * type, const char * name );
+// add special => handling
+typedef void (CK_DLL_CALL * f_add_ck_func)( Chuck_DL_Query * query, f_chuck ckfun, const char * from_type );
 // end class/namespace - must correspondent with begin_class.  returns false on error
 typedef t_CKBOOL (CK_DLL_CALL * f_end_class)( Chuck_DL_Query * query );
 // register 
@@ -345,6 +350,8 @@ struct Chuck_DL_Query
     
     // added 1.3.2.0
     f_create_main_thread_hook create_main_thread_hook;
+    // => handler (added ~chugl)
+    f_add_ck_func add_ck_func;
     
     // constructor
     Chuck_DL_Query();
@@ -387,6 +394,8 @@ struct Chuck_DL_Class
     std::vector<Chuck_DL_Ctrl *> ugen_ctrl;
     // uana_tock
     f_tock uana_tock;
+    // => functions
+    std::vector<Chuck_DL_Func *> ckfuns;
     // collection of recursive classes
     std::vector<Chuck_DL_Class *> classes;
     // current mvar offset
@@ -434,7 +443,7 @@ struct Chuck_DL_Func
     // the return type
     std::string type;
     // the pointer
-    union { f_ctor ctor; f_dtor dtor; f_mfun mfun; f_sfun sfun; t_CKUINT addr; };
+    union { f_ctor ctor; f_dtor dtor; f_mfun mfun; f_sfun sfun; f_chuck ckfun; t_CKUINT addr; };
     // arguments
     std::vector<Chuck_DL_Value *> args;
     

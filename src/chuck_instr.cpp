@@ -5427,6 +5427,49 @@ void Chuck_Instr_UGen_PMsg::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 // name: execute()
 // desc: ...
 //-----------------------------------------------------------------------------
+void Chuck_Instr_Generic_Link::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    Chuck_Object **& sp = (Chuck_Object **&)shred->reg->sp;
+    
+    Chuck_Func * func;
+    f_chuck ckfun;
+    
+    // pop
+    pop_( sp, 3 );
+    t_CKUINT vt_index = (t_CKUINT) *(sp + 2);
+    Chuck_Object * to = *(sp + 1);
+    Chuck_Object * from = *(sp);
+    
+    // check for null
+    if( !to || !from) goto null_pointer;
+    // go for it
+    func = to->type_ref->info->obj_v_table.funcs[vt_index];
+    ckfun = (f_chuck) func->code->native_func;
+    ckfun(to, from, shred, Chuck_DL_Api::Api::instance());
+    
+    // push the second
+    push_( sp, *(sp + 1) );
+    
+    return;
+    
+null_pointer:
+    // we have a problem
+    fprintf( stderr,
+            "[chuck](VM): NullPointerException: (Object link) in shred[id=%lu:%s], PC=[%lu]\n",
+            shred->xid, shred->name.c_str(), shred->pc );
+    
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: ...
+//-----------------------------------------------------------------------------
 void Chuck_Instr_Init_Loop_Counter::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
     t_CKINT *& sp = (t_CKINT *&)shred->reg->sp;

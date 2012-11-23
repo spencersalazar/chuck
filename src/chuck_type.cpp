@@ -1855,6 +1855,19 @@ t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
         else
         {
             // TODO: check overloading of =>
+            int len = right->info->obj_v_table.funcs.size();
+            for(int i = 0; i < len; i++)
+            {
+                Chuck_Func * f = right->info->obj_v_table.funcs[i];
+                // SPENCERTODO: better way of indicating => overloads than string comparison
+                if(f->code->native_func && f->name.find("@chuck") == 0 &&
+                   f->def->arg_list)
+                {
+                    Chuck_Type * ftype = f->def->arg_list->type;
+                    if(isa(left, ftype))
+                        return right;
+                }
+            }
 
             // no match
             EM_error2( lhs->linepos,
