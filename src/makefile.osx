@@ -1,7 +1,7 @@
 # uncomment the following to force 32-bit compilation
 # FORCE_M32=-m32
 
-ifneq ($(shell sw_vers -productVersion | egrep '10\.[678](\.[0-9]+)?'),)
+ifneq ($(shell sw_vers -productVersion | egrep '10\.[6789](\.[0-9]+)?'),)
 SDK=$(shell xcodebuild -sdk macosx -version | grep '^Path:' | sed 's/Path: \(.*\)/\1/')
 ISYSROOT=-isysroot $(SDK)
 LINK_EXTRAS=-F/System/Library/PrivateFrameworks \
@@ -11,8 +11,8 @@ ISYSROOT=-isysroot /Developer/SDKs/MacOSX10.4u.sdk
 LINK_EXTRAS=
 endif
 
-ifneq ($(shell gcc --version | head -1 | awk -F" " '{ printf $3 }' | grep '4\.[1-9]'),)
-# force clang if gcc 4.2 is present (for OS X 10.4 compatibility)
+ifneq ($(shell which clang),)
+# force clang if available (for OS X 10.4 compatibility)
 CC=clang
 CXX=clang++
 LD=clang++
@@ -23,13 +23,13 @@ CFLAGSDEPEND+= -D__MACOSX_CORE__ $(FORCE_M32) $(ISYSROOT)
 
 FRAMEWORKS+= CoreAudio CoreMIDI CoreFoundation IOKit Carbon AppKit Foundation
 LDFLAGS+= $(FORCE_M32) $(ISYSROOT) $(addprefix -framework ,$(FRAMEWORKS)) \
-    $(LINK_EXTRAS) -lstdc++ -lm 
+    $(LINK_EXTRAS) -lstdc++ -lm
 
 CSRCS+= util_sndfile.c
 
 
 # this is to link properly on leopard...
-MACOSX_DEPLOYMENT_TARGET=10.4
+MACOSX_DEPLOYMENT_TARGET=10.5
 export MACOSX_DEPLOYMENT_TARGET
 # option 2, add this to the gcc flags: -mmacosx-version-min=10.4
 

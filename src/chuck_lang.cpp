@@ -1,34 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // name: chuck_lang.cpp
 // desc: chuck class library base
 //
-// authors: Ge Wang (gewang@cs.princeton.edu)
-//          Perry R. Cook (prc@cs.princeton.edu)
-//          Spencer Salazar (ssalazar@cs.princeton.edu)
+// authors: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+//          Spencer Salazar (spencer@ccrma.stanford.edu)
+//          Ananya Misra (amisra@cs.princeton.edu)
 //          Andrew Schran (aschran@princeton.edu)
 //    date: spring 2005
 //-----------------------------------------------------------------------------
@@ -41,6 +41,7 @@
 #include "chuck_globals.h"
 #include "hidio_sdl.h"
 #include "util_string.h"
+#include "util_serial.h"
 
 #ifndef __DISABLE_MIDI__
 #include "midiio_rtmidi.h"
@@ -58,6 +59,9 @@ static t_CKUINT Object_offset_string = 0;
 
 // global
 static Chuck_String * g_newline = new Chuck_String();
+
+
+
 
 
 
@@ -408,6 +412,11 @@ t_CKBOOL init_class_shred( Chuck_Env * env, Chuck_Type * type )
     // add dtor
     // not
 
+    // add fromId()
+    func = make_new_sfun( "Shred", "fromId", shred_fromId );
+    func->add_arg( "int", "id" );
+    if( !type_engine_import_sfun( env, func ) ) goto error;
+    
     // add clone()
     func = make_new_mfun( "void", "clone", shred_clone );
     if( !type_engine_import_mfun( env, func ) ) goto error;
@@ -454,8 +463,21 @@ t_CKBOOL init_class_shred( Chuck_Env * env, Chuck_Type * type )
     func = make_new_mfun( "string", "sourcePath", shred_sourcePath );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     
+    // add path() (added 1.3.2.0)
+    func = make_new_mfun( "string", "path", shred_sourcePath );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
     // add sourceDir() (added 1.3.0.0)
     func = make_new_mfun( "string", "sourceDir", shred_sourceDir );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add dir() (added 1.3.2.0)
+    func = make_new_mfun( "string", "dir", shred_sourceDir );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add dir() (added 1.3.2.0, ge)
+    func = make_new_mfun( "string", "dir", shred_sourceDir2 );
+    func->add_arg( "int", "levelsUp" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     
     // end the class import
@@ -941,8 +963,6 @@ error:
 }
 
 
-
-
 //-----------------------------------------------------------------------------
 // name: init_class_string()
 // desc: ...
@@ -983,11 +1003,123 @@ t_CKBOOL init_class_string( Chuck_Env * env, Chuck_Type * type )
     // add trim()
     func = make_new_mfun( "string", "trim", string_trim );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-
+    
     // add toString()
     func = make_new_mfun( "string", "toString", string_toString );
     if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add charAt()
+    func = make_new_mfun( "int", "charAt", string_charAt );
+    func->add_arg("int", "index");
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add setCharAt()
+    func = make_new_mfun( "int", "setCharAt", string_setCharAt );
+    func->add_arg("int", "index");
+    func->add_arg("int", "theChar");
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add substring()
+    func = make_new_mfun( "string", "substring", string_substring );
+    func->add_arg("int", "start");
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add substring()
+    func = make_new_mfun( "string", "substring", string_substringN );
+    func->add_arg("int", "start");
+    func->add_arg("int", "length");
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add insert()
+    func = make_new_mfun( "void", "insert", string_insert );
+    func->add_arg("int", "position");
+    func->add_arg("string", "str");
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add replace()
+    func = make_new_mfun( "void", "replace", string_replace );
+    func->add_arg( "int", "position" );
+    func->add_arg( "string", "str" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add replace()
+    func = make_new_mfun( "void", "replace", string_replaceN );
+    func->add_arg( "int", "position" );
+    func->add_arg( "int", "length" );
+    func->add_arg( "string", "str" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_find );
+    func->add_arg( "int", "theChar" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_findStart );
+    func->add_arg( "int", "theChar" );
+    func->add_arg( "int", "start" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_findStr );
+    func->add_arg( "string", "str" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_findStrStart );
+    func->add_arg( "string", "str" );
+    func->add_arg( "int", "start" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfind );
+    func->add_arg( "int", "theChar" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfindStart );
+    func->add_arg( "int", "theChar" );
+    func->add_arg( "int", "start" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfindStr );
+    func->add_arg( "string", "str" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfindStrStart );
+    func->add_arg( "string", "str" );
+    func->add_arg( "int", "start" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add erase()
+    func = make_new_mfun( "int", "erase", string_erase );
+    func->add_arg( "int", "start" );
+    func->add_arg( "int", "length" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    // add toInt()
+    func = make_new_mfun( "int", "toInt", string_toInt );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add toFloat()
+    func = make_new_mfun( "float", "toFloat", string_toFloat );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add parent()
+    // disable for now
+//    func = make_new_mfun( "string", "parent", string_parent );
+//    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+//    // add toTime()
+//    func = make_new_mfun( "float", "toTime", string_toFloat );
+//    if( !type_engine_import_mfun( env, func ) ) goto error;
+//
+//    // add toDur()
+//    func = make_new_mfun( "float", "toDur", string_toFloat );
+//    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
 /*    // add at()
     func = make_new_mfun( "int", "ch", string_set_at );
     func->add_arg( "int", "index" );
@@ -1085,14 +1217,12 @@ error:
 
 
 
-#ifndef __DISABLE_MIDI__
-
 // static
 static t_CKUINT MidiIn_offset_data = 0;
-static t_CKUINT MidiMsg_offset_data1 = 0;
-static t_CKUINT MidiMsg_offset_data2 = 0;
-static t_CKUINT MidiMsg_offset_data3 = 0;
-static t_CKUINT MidiMsg_offset_when = 0;
+t_CKUINT MidiMsg_offset_data1 = 0;
+t_CKUINT MidiMsg_offset_data2 = 0;
+t_CKUINT MidiMsg_offset_data3 = 0;
+t_CKUINT MidiMsg_offset_when = 0;
 static t_CKUINT MidiOut_offset_data = 0;
 
 //-----------------------------------------------------------------------------
@@ -1122,13 +1252,13 @@ t_CKBOOL init_class_Midi( Chuck_Env * env )
     if( MidiMsg_offset_data3 == CK_INVALID_OFFSET ) goto error;
 
     // add member variable
-    MidiMsg_offset_when = type_engine_import_mvar( env, "time", "when", FALSE );
+    MidiMsg_offset_when = type_engine_import_mvar( env, "dur", "when", FALSE );
     if( MidiMsg_offset_when == CK_INVALID_OFFSET ) goto error;
 
     // end the class import
     type_engine_import_class_end( env );
 
-
+#ifndef __DISABLE_MIDI__
     // init base class
     if( !type_engine_import_class_begin( env, "MidiIn", "Event",
                                          env->global(), MidiIn_ctor, MidiIn_dtor ) )
@@ -1221,6 +1351,8 @@ t_CKBOOL init_class_Midi( Chuck_Env * env )
     // end the class import
     type_engine_import_class_end( env );
     
+#endif // __DISABLE_MIDI__
+    
     return TRUE;
 
 error:
@@ -1230,8 +1362,6 @@ error:
     
     return FALSE;
 }
-
-#endif // __DISABLE_MIDI__
 
 
 
@@ -1675,7 +1805,6 @@ error:
 
 
 
-#ifndef __DISABLE_MIDI__
 
 // static
 static t_CKUINT MidiRW_offset_data = 0;
@@ -1688,6 +1817,8 @@ static t_CKUINT MidiMsgIn_offset_data = 0;
 t_CKBOOL init_class_MidiRW( Chuck_Env * env )
 {
     Chuck_DL_Func * func = NULL;
+
+#ifndef __DISABLE_MIDI__
 
     // init base class
     if( !type_engine_import_class_begin( env, "MidiRW", "Object",
@@ -1776,6 +1907,8 @@ t_CKBOOL init_class_MidiRW( Chuck_Env * env )
     // end the class import
     type_engine_import_class_end( env );
 
+#endif // __DISABLE_MIDI__
+    
     // initialize
     // HidInManager::init();
 
@@ -1790,8 +1923,6 @@ error:
 }
 
 
-
-#endif // __DISABLE_MIDI__
 
 
 
@@ -2623,8 +2754,6 @@ CK_DLL_MFUN( fileio_writefloat )
 }
 
 
-
-
 //-----------------------------------------------------------------------------
 // Chout API
 //-----------------------------------------------------------------------------
@@ -2951,7 +3080,35 @@ CK_DLL_MFUN( shred_sourceDir ) // added 1.3.0.0
     
     str->str = extract_filepath_dir(derhs->code->filename);
     
-    RETURN->v_string = str; 
+    RETURN->v_string = str;
+}
+
+CK_DLL_MFUN( shred_sourceDir2 ) // added 1.3.2.0
+{
+    Chuck_VM_Shred * derhs = (Chuck_VM_Shred *)SELF;
+    // get num up
+    t_CKINT i = GET_NEXT_INT(ARGS);
+    // abs
+    if( i < 0 ) i = -i;
+
+    // new chuck string
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
+    // set the content
+    str->str = extract_filepath_dir(derhs->code->filename);
+    // up
+    str->str = dir_go_up( str->str, i );
+    
+    RETURN->v_string = str;
+}
+
+
+CK_DLL_SFUN( shred_fromId ) // added 1.3.2.0
+{
+    t_CKINT shred_id = GET_NEXT_INT(ARGS);
+    
+    Chuck_VM_Shred * derhs = SHRED->vm_ref->shreduler()->lookup(shred_id);
+    
+    RETURN->v_object = derhs;
 }
 
 
@@ -3005,6 +3162,354 @@ CK_DLL_MFUN( string_toString )
 {
     Chuck_String * s = (Chuck_String *)SELF;
     RETURN->v_string = s;
+}
+
+CK_DLL_MFUN(string_charAt)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT index = GET_NEXT_INT(ARGS);
+    
+    if(index < 0 || index >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", index);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    RETURN->v_int = str->str.at(index);
+}
+
+CK_DLL_MFUN(string_setCharAt)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT index = GET_NEXT_INT(ARGS);
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    
+    if(index < 0 || index >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", index);
+        RETURN->v_int = -1;
+        return;
+    }
+
+    str->str.at(index) = the_char;
+    RETURN->v_int = str->str.at(index);
+}
+
+CK_DLL_MFUN(string_substring)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_string = NULL;
+        return;
+    }
+
+    Chuck_String * ss = (Chuck_String *) instantiate_and_initialize_object(&t_string, SHRED);
+    ss->str = str->str.substr(start);
+    
+    RETURN->v_string = ss;
+}
+
+CK_DLL_MFUN(string_substringN)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    t_CKINT length = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_string = NULL;
+        return;
+    }
+
+    if(length < 0 || start+length > str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", length);
+        RETURN->v_string = NULL;
+        return;
+    }
+    
+    Chuck_String * ss = (Chuck_String *) instantiate_and_initialize_object(&t_string, SHRED);
+    ss->str = str->str.substr(start, length);
+    
+    RETURN->v_string = ss;
+}
+
+CK_DLL_MFUN(string_insert)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT position = GET_NEXT_INT(ARGS);
+    Chuck_String * str2 = GET_NEXT_STRING(ARGS);
+    
+    if(position < 0 || position >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", position);
+        return;
+    }
+    if(str2 == NULL)
+    {
+        throw_exception(SHRED, "NullPointerException");
+        return;
+    }
+
+
+    str->str.insert(position, str2->str);
+}
+
+CK_DLL_MFUN(string_replace)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT position = GET_NEXT_INT(ARGS);
+    Chuck_String * str2 = GET_NEXT_STRING(ARGS);
+    
+    if(position < 0 || position >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", position);
+        return;
+    }
+    if(str2 == NULL)
+    {
+        throw_exception(SHRED, "NullPointerException");
+        return;
+    }
+
+    string::size_type length;
+    if(position + str2->str.length() > str->str.length())
+        length = str->str.length() - position;
+    else
+        length = str2->str.length();
+    
+    str->str.replace(position, length, str2->str);
+}
+
+CK_DLL_MFUN(string_replaceN)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT position = GET_NEXT_INT(ARGS);
+    t_CKINT length = GET_NEXT_INT(ARGS);
+    Chuck_String * str2 = GET_NEXT_STRING(ARGS);
+
+    if(position < 0 || position >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", position);
+        return;
+    }
+
+    if(length < 0 || position+length > str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", length);
+        return;
+    }
+
+    if(str2 == NULL)
+    {
+        throw_exception(SHRED, "NullPointerException");
+        return;
+    }
+
+    str->str.replace(position, length, str2->str);
+}
+
+CK_DLL_MFUN(string_find)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    
+    string::size_type index = str->str.find(the_char);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_findStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+
+    string::size_type index = str->str.find(the_char, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_findStr)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    
+    string::size_type index = str->str.find(the_str->str);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_findStrStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    string::size_type index = str->str.find(the_str->str, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfind)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    
+    string::size_type index = str->str.rfind(the_char);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfindStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    string::size_type index = str->str.rfind(the_char, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfindStr)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    
+    string::size_type index = str->str.rfind(the_str->str);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfindStrStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    string::size_type index = str->str.rfind(the_str->str, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_erase)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    t_CKINT length = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        return;
+    }
+    
+    if(length < 0 || start+length > str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", length);
+        return;
+    }
+    
+    str->str.erase(start, length);
+}
+
+CK_DLL_MFUN( string_toInt )
+{
+    // get pointer to self
+    Chuck_String * str = (Chuck_String *)SELF;
+    // convert to int
+    RETURN->v_int = ::atoi( str->str.c_str() );
+}
+
+CK_DLL_MFUN( string_toFloat )
+{
+    // get pointer to self
+    Chuck_String * str = (Chuck_String *)SELF;
+    // convert to int
+    RETURN->v_float = (t_CKFLOAT)::atof( str->str.c_str() );
+}
+
+CK_DLL_MFUN( string_parent )
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    
+    string::size_type i = str->str.rfind('/', str->str.length()-2);
+#ifdef WIN32
+    // SPENCERTODO: make this legit on windows
+    if(i == string::npos)
+        i = str->str.rfind('\\', str->str.length()-2);
+#endif // WIN32
+    
+    Chuck_String * parent = (Chuck_String *) instantiate_and_initialize_object(&t_string, SHRED);
+    
+    if(i != string::npos)
+    {
+        if(i == 0)
+            parent->str = "/";
+        else
+            parent->str = str->str.substr(0, i);
+    }
+    
+    RETURN->v_string = parent;
 }
 
 /*
@@ -3698,37 +4203,44 @@ CK_DLL_MFUN( HidOut_send )
 }
 
 
-#ifndef __DISABLE_MIDI__
-
 //-----------------------------------------------------------------------------
 // MidiRW API
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( MidiRW_ctor )
 {
+#ifndef __DISABLE_MIDI__
     OBJ_MEMBER_INT(SELF, MidiRW_offset_data) = (t_CKUINT)new MidiRW;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_DTOR( MidiRW_dtor )
 {
+#ifndef __DISABLE_MIDI__
     delete (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     OBJ_MEMBER_INT(SELF, MidiRW_offset_data) = 0;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_open )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     RETURN->v_int = mrw->open( filename );
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_close )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     RETURN->v_int = mrw->close();
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_read )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     MidiMsg the_msg;
@@ -3738,10 +4250,12 @@ CK_DLL_MFUN( MidiRW_read )
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2) = the_msg.data[1];
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3) = the_msg.data[2];
     OBJ_MEMBER_TIME(fake_msg, MidiMsg_offset_when) = time;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_write )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     t_CKTIME time = GET_NEXT_TIME(ARGS);
@@ -3750,6 +4264,7 @@ CK_DLL_MFUN( MidiRW_write )
     the_msg.data[1] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2);
     the_msg.data[2] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3);
     RETURN->v_int = mrw->write( &the_msg, &time );
+#endif // __DISABLE_MIDI__
 }
 
 
@@ -3758,30 +4273,39 @@ CK_DLL_MFUN( MidiRW_write )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( MidiMsgOut_ctor )
 {
+#ifndef __DISABLE_MIDI__
     OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data) = (t_CKUINT)new MidiMsgOut;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_DTOR( MidiMsgOut_dtor )
 {
+#ifndef __DISABLE_MIDI__
     delete (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data) = 0;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgOut_open )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgOut * mrw = (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     RETURN->v_int = mrw->open( filename );
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgOut_close )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgOut * mrw = (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     RETURN->v_int = mrw->close();
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgOut_write )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgOut * mrw = (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     t_CKTIME time = GET_NEXT_TIME(ARGS);
@@ -3790,6 +4314,7 @@ CK_DLL_MFUN( MidiMsgOut_write )
     the_msg.data[1] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2);
     the_msg.data[2] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3);
     RETURN->v_int = mrw->write( &the_msg, &time );
+#endif // __DISABLE_MIDI__
 }
 
 
@@ -3798,30 +4323,39 @@ CK_DLL_MFUN( MidiMsgOut_write )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( MidiMsgIn_ctor )
 {
+#ifndef __DISABLE_MIDI__
     OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data) = (t_CKUINT)new MidiMsgIn;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_DTOR( MidiMsgIn_dtor )
 {
+#ifndef __DISABLE_MIDI__
     delete (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data) = 0;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgIn_open )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgIn * mrw = (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     RETURN->v_int = mrw->open( filename );
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgIn_close )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgIn * mrw = (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     RETURN->v_int = mrw->close();
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgIn_read )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgIn * mrw = (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     MidiMsg the_msg;
@@ -3831,6 +4365,5 @@ CK_DLL_MFUN( MidiMsgIn_read )
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2) = the_msg.data[1];
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3) = the_msg.data[2];
     OBJ_MEMBER_TIME(fake_msg, MidiMsg_offset_when) = time;
-}
-
 #endif // __DISABLE_MIDI__
+}

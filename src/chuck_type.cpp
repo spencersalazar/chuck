@@ -1,35 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_type.cpp
 // desc: chuck type-system / type-checker
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002 - original
-//       Autumn 2004 - rewrite
+//       Autumn 2005 - rewrite
 //-----------------------------------------------------------------------------
 #include "chuck_type.h"
 #include "chuck_parse.h"
@@ -65,7 +64,7 @@ Chuck_Type t_ugen( te_ugen, "UGen", &t_object, sizeof(void *) );
 Chuck_Type t_uana( te_uana, "UAna", &t_ugen, sizeof(void *) );
 Chuck_Type t_uanablob( te_uanablob, "UAnaBlob", &t_object, sizeof(void *) );
 Chuck_Type t_shred( te_shred, "Shred", &t_object, sizeof(void *) );
-Chuck_Type t_io( te_io, "IO", &t_object, sizeof(void *) );
+Chuck_Type t_io( te_io, "IO", &t_event, sizeof(void *) );
 Chuck_Type t_fileio( te_fileio, "FileIO", &t_io, sizeof(void *) );
 Chuck_Type t_chout( te_chout, "StdOut", &t_io, sizeof(void *) );
 Chuck_Type t_cherr( te_cherr, "StdErr", &t_io, sizeof(void *) );
@@ -1756,28 +1755,84 @@ t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
     }
 
     // ugen => ugen
-    if( isa( left, &t_ugen ) && isa( right, &t_ugen ) )
+    // ugen[] => ugen[]
+    if( ( isa( left, &t_ugen ) || ( isa( left, &t_array ) && isa( left->array_type, &t_ugen ) ) ) &&
+        ( isa( right, &t_ugen ) || ( isa( right, &t_array ) && isa( right->array_type, &t_ugen ) ) ) )
     {
+        t_CKTYPE left_ugen_type = NULL;
+        t_CKTYPE right_ugen_type = NULL;
+        
+        if( isa( left, &t_array ) )
+        {
+            left_ugen_type = left->array_type;
+            
+            if( left->array_depth > 1 )
+            {
+                EM_error2( lhs->linepos, "array ugen type has more than one dimension - can only => one-dimensional array of mono ugens" );
+                return NULL;
+            }
+            
+            if( left_ugen_type->ugen_info->num_outs > 1 )
+            {
+                // error
+                EM_error2( lhs->linepos,
+                           "array ugen type '%s' has more than one output channel - can only => one-dimensional array of mono ugens",
+                           left_ugen_type->c_name() );
+                return NULL;
+            }
+        }
+        else
+        {
+            left_ugen_type = left;
+        }
+        
+        if( isa( right, &t_array ) )
+        {
+            right_ugen_type = right->array_type;
+            
+            if( right->array_depth > 1 )
+            {
+                EM_error2( rhs->linepos,
+                           "array ugen type has more than one dimension - can only => one-dimensional array of mono ugens" );
+                return NULL;
+            }
+            
+            if( right_ugen_type->ugen_info->num_ins > 1 )
+            {
+                // error
+                EM_error2( rhs->linepos,
+                           "array ugen type '%s' has more than one input channel - can only => array of mono ugens",
+                           right_ugen_type->c_name() );
+                return NULL;
+            }
+        }
+        else
+        {
+            right_ugen_type = right;
+        }
+        
         // make sure non-zero
-        if( left->ugen_info->num_outs == 0 )
+        if( left_ugen_type->ugen_info->num_outs == 0 )
         {
             // error
             EM_error2( lhs->linepos,
                 "ugen's of type '%s' have no output - cannot => to another ugen...",
-                left->c_name() );
+                left_ugen_type->c_name() );
             return NULL;
         }
-        else if( right->ugen_info->num_ins == 0 )
+        else if( right_ugen_type->ugen_info->num_ins == 0 )
         {
             // error
             EM_error2( rhs->linepos,
                 "ugen's of type '%s' have no input - cannot => from another ugen...",
-                right->c_name() );
+                right_ugen_type->c_name() );
             return NULL;
         }
 
         return right;
     }
+    
+    
 
     // time advance ( dur => now )
     if( isa( left, &t_dur ) && isa( right, &t_time ) && rhs->s_meta == ae_meta_var
@@ -2339,6 +2394,16 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
             // a string
             t = &t_string;
         break;
+
+        // char
+        case ae_primary_char:
+            // check escape sequences
+            if( str2char( exp->chr, exp->linepos ) == -1 )
+                return NULL;
+            
+            // a string
+            t = &t_int;
+            break;
 
         // array literal
         case ae_primary_array:
@@ -5070,6 +5135,18 @@ t_CKUINT type_engine_import_mvar( Chuck_Env * env, const char * type,
     }
     // make var decl
     a_Var_Decl var_decl = new_var_decl( (char *)name, NULL, 0 );
+    
+    // added 2013-10-22 - spencer
+    // allow array-type mvars
+    // check for array
+    if( array_depth )
+    {
+        // add the array
+        var_decl->array = new_array_sub( NULL, 0 );
+        // set the depth
+        var_decl->array->depth = array_depth;
+    }
+
     // make var decl list
     a_Var_Decl_List var_decl_list = new_var_decl_list( var_decl, 0 );
     // make exp decl
@@ -5461,6 +5538,11 @@ a_Arg_List make_dll_arg_list( Chuck_DL_Func * dl_fun )
     // loop backwards
     for( i = dl_fun->args.size() - 1; i >= 0; i-- )
     {
+        // clear array
+        // added 1.3.2.0 - spencer
+        array_depth = array_depth2 = 0;
+        array_sub = NULL;
+        
         // copy into variable
         arg = dl_fun->args[i];
 
@@ -5797,6 +5879,9 @@ t_CKBOOL type_engine_add_dll2( Chuck_Env * env, Chuck_DLL * dll,
     return TRUE;
 }
 
+
+
+
 //-----------------------------------------------------------------------------
 // name: type_engine_add_class_from_dl()
 // desc: add the DLL using type_engine functions (added 1.3.0.0)
@@ -5929,12 +6014,12 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
     // create if not yet
     if( !g_escape_ready )
         escape_table( );
-
+    
     // write pointer
     char * str = str_lit;
     // unsigned because we index array of 256
     unsigned char c, c2, c3;
-
+    
     // iterate
     while( *str_lit )
     {
@@ -5943,18 +6028,18 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
         {
             // advance pointer
             str_lit++;
-
+            
             // make sure next char
             if( *str_lit == '\0' )
             {
                 EM_error2( linepos, "invalid: string ends with escape charactor '\\'" );
                 return FALSE;
             }
-
+            
             // next characters
             c = *(str_lit);
             c2 = *(str_lit+1);
-
+            
             // is octal?
             if( c >= '0' && c <= '7' )
             {
@@ -5965,7 +6050,7 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
                 {
                     // get next
                     c3 = *(str_lit+2);
-
+                    
                     // all three should be within range
                     if( c2 >= '0' && c2 <= '7' && c3 >= '0' && c3 <= '7' )
                     {
@@ -6003,16 +6088,44 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
             // char
             *str++ = *str_lit;
         }
-
+        
         // advance pointer
         str_lit++;
     }
-
+    
     // make sure
     assert( str <= str_lit );
-
+    
     // terminate
     *str = '\0';
-
+    
     return TRUE;
+}
+
+t_CKINT str2char( const char * c, int linepos )
+{
+    if(c[0] == '\\')
+    {
+        switch(c[1])
+        {
+            case '0': return '\0';
+            case '\'': return '\'';
+            case '\\': return '\\';
+            case 'a': return '\a';
+            case 'b': return '\b';
+            case 'f': return '\f';
+            case 'n': return '\n';
+            case 'r': return '\r';
+            case 't': return '\t';
+            case 'v': return 'v';
+                
+            default:
+                EM_error2( linepos, "unrecognized escape sequence '\\%c'", c[1] );
+                return -1;
+        }
+    }
+    else
+    {
+        return c[0];
+    }
 }

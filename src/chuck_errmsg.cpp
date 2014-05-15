@@ -1,36 +1,35 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: errmsg.cpp
-// desc: functions used in all phases of the compiler to give error messages 
-//       about the Tiger program.  (now ChucK)
+// desc: functions used in all phases of the compiler to give error messages
+//       based on Andrew Appel's Tiger code
 //
-// author: Andrew Appel (appel@cs.princeton.edu)
-// modified: Ge Wang (gewang@cs.princeton.edu)
-//           Perry R. Cook (prc@cs.princeton.edu)
-// date: Autumn 2002
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+// based on code by: Andrew Appel (appel@cs.princeton.edu)
+// date: Summer 2002
 //-----------------------------------------------------------------------------
 #include <stdlib.h>
 #include <stdarg.h>
@@ -115,6 +114,10 @@ const char * mini_type( const char * str )
     return p;
 }
 
+void EM_reset_msg()
+{
+    g_lasterror[0] = '\0';
+}
 
 // [%s]:line(%d).char(%d): 
 void EM_error( int pos, const char * message, ... )
@@ -129,9 +132,13 @@ void EM_error( int pos, const char * message, ... )
         lines = lines->rest;
         num--;
     }
-
+    
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) strcat( g_lasterror, "\n" );
+    
     fprintf( stderr, "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_lasterror, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    strcat( g_lasterror, g_buffer );
     if(lines)
     {
         fprintf(stderr, "line(%d).char(%d):", num, pos-lines->i );
@@ -155,15 +162,19 @@ void EM_error( int pos, const char * message, ... )
 }
 
 
-// [%s]:line(%d): 
+// [%s]:line(%d):
 void EM_error2( int line, const char * message, ... )
 {
     va_list ap;
 
     EM_extLineNum = line;
 
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) strcat( g_lasterror, "\n" );
+    
     fprintf( stderr, "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_lasterror, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    strcat( g_lasterror, g_buffer );
     if(line)
     {
         fprintf( stderr, "line(%d):", line );
@@ -194,8 +205,12 @@ void EM_error2b( int line, const char * message, ... )
     
     EM_extLineNum = line;
 
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) strcat( g_lasterror, "\n" );
+    
     fprintf( stderr, "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_lasterror, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    strcat( g_lasterror, g_buffer );
     if(line)
     {
         fprintf( stderr, "line(%d):", line );
@@ -224,7 +239,10 @@ void EM_error3( const char * message, ... )
 {
     va_list ap;
     
-    g_lasterror[0] = '\0';
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) strcat( g_lasterror, "\n" );
+    
+//    g_lasterror[0] = '\0';
     g_buffer[0] = '\0';
 
     va_start( ap, message );

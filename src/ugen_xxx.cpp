@@ -1,34 +1,36 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: ugen_xxx.cpp
-// desc: ...
+// desc: non-specific unit generators
 //
 // author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
 //         Ananya Misra (amisra@cs.princeton.edu)
+//         Perry R. Cook (prc@cs.princeton.edu)
+//         Dan Trueman (dtrueman@princeton.edu)
+//         Matt Hoffman (for Dyno)
 // date: Spring 2004
 //       Summer 2005 - updated
 //-----------------------------------------------------------------------------
@@ -867,7 +869,7 @@ static t_CKUINT LiSaMulti_offset_data = 0;
 // name: lisa_query()
 // desc: ...
 //-----------------------------------------------------------------------------
-#define LiSa_channels 8 //max channels for multichannel LiSa
+#define LiSa_channels 1 //max channels for multichannel LiSa
 DLL_QUERY lisa_query( Chuck_DL_Query * QUERY )
 {
     Chuck_Env * env = Chuck_Env::instance();
@@ -880,7 +882,7 @@ DLL_QUERY lisa_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
 	
 	
-    if( !type_engine_import_ugen_begin( env, "LiSa", "UGen_Stereo", env->global(),
+    if( !type_engine_import_ugen_begin( env, "LiSa", "UGen", env->global(),
                                         LiSaMulti_ctor, LiSaMulti_dtor,
                                         LiSaMulti_tick, LiSaMulti_pmsg, 1, LiSa_channels ))
         return FALSE;
@@ -2840,7 +2842,11 @@ CK_DLL_TICKF( sndbuf_tickf )
 CK_DLL_CTRL( sndbuf_ctrl_read )
 {
     sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
-    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
+    Chuck_String * ckfilename = GET_CK_STRING(ARGS);
+    const char * filename = ckfilename->str.c_str();
+    
+    // return filename
+    RETURN->v_string = ckfilename;
     
     if( d->buffer )
     {
@@ -3586,6 +3592,8 @@ struct LiSaMulti_data
             fprintf(stderr, "LiSaBasic: unable to allocate memory!\n");
             return false;
         }
+        
+        memset(mdata, 0, (length + 1) * sizeof(SAMPLE));
             
         mdata_len = length;
         maxvoices = 10; // default; user can set
@@ -3617,8 +3625,9 @@ struct LiSaMulti_data
 			for(t_CKINT j=2; j<num_chans; j++) {
 				channelGain[i][j] = 1.;
 			}
-			channelGain[i][0] = 0.707;
-			channelGain[i][1] = 0.707;
+			channelGain[i][0] = 1.0;
+//			channelGain[i][0] = 0.707;
+//			channelGain[i][1] = 0.707;
         }
         
         return true;
@@ -3820,11 +3829,25 @@ struct LiSaMulti_data
         } else if(track==1) {
             if(in<0.) in = -in; 
 			for (t_CKINT i=0; i<maxvoices; i++) {
-				if(play[i]) tempsample += getSamp((t_CKDOUBLE)in * (loop_end[i] - loop_start[i]) + loop_start[i], i);
+				if(play[i]) {
+                    t_CKDOUBLE location = loop_start[i] + (t_CKDOUBLE)in * (loop_end[i] - loop_start[i]);
+                    tempsample = getSamp(location, i);
+                    
+                    // spencer 2013/5/13: fix LiSa track-mode multichannel
+                    for(t_CKINT j=0;j<num_chans;j++) {
+                        outsamples[j] += tempsample * channelGain[i][j]; //channelGain should return gain for voice i in channel j
+                    }
+                }
 			}
         } else if(track==2 && play[0]) {
             if(in<0.) in = -in; //only use voice 0 when tracking with durs.
             tempsample = getSamp( (t_CKDOUBLE)in, 0 );
+            
+            // spencer 2013/5/13: fix LiSa track-mode multichannel
+            for(t_CKINT j=0;j<num_chans;j++) {
+                //outsamples[j] += tempsample; //mono for now, testing...
+                outsamples[j] += tempsample * channelGain[0][j]; //channelGain should return gain for voice i in channel j
+            }
         }
 
         return outsamples;
@@ -3909,7 +3932,8 @@ CK_DLL_CTOR( LiSaMulti_ctor )
 			
 	Chuck_UGen * ugen = (Chuck_UGen *)SELF;
 	f->num_chans = ugen->m_multi_chan_size;
-    //fprintf(stderr, "LiSa: number of channels = %d\n", f->num_chans);	
+	f->num_chans = 1;
+    //fprintf(stderr, "LiSa: number of channels = %d\n", f->num_chans);
 	f->outsamples = new SAMPLE[f->num_chans];
 	memset( f->outsamples, 0, (f->num_chans)*sizeof(SAMPLE) );
 	
@@ -3946,9 +3970,9 @@ CK_DLL_TICK( LiSaMulti_tick )
     LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
 	SAMPLE * temp_out_samples = d->tick_multi( in );
 	
-	for( t_CKUINT i = 0; i < ugen->m_multi_chan_size; i++ )
-		ugen->m_multi_chan[i]->m_sum = ugen->m_multi_chan[i]->m_current = temp_out_samples[i]; //yay this works!
-		//out[i] = temp_out_samples[i];
+//	for( t_CKUINT i = 0; i < ugen->m_multi_chan_size; i++ )
+//		ugen->m_multi_chan[i]->m_sum = ugen->m_multi_chan[i]->m_current = temp_out_samples[i]; //yay this works!
+    *out = temp_out_samples[0];
 	
     return TRUE;
 }

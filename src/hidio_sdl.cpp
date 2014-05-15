@@ -1,37 +1,36 @@
-
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: hidio_sdl.cpp
-// desc: HID io over SDL
+// desc: HID io over SDL header
 //
 // author: Spencer Salazar (ssalazar@cs.princeton.edu)
 //         Ge Wang (gewang@cs.princeton.edu)
 //         Ananya Misra (amisra@cs.princeton.edu)
 //         Perry R. Cook (prc@cs.princeton.edu)
-// date: spring 2006
+// date: Summer 2005
 //-----------------------------------------------------------------------------
 #include "hidio_sdl.h"
 #include "util_hid.h"
@@ -89,7 +88,7 @@ struct PhyHidDevOut
 // global variables
 //-----------------------------------------------------------------------------
 // per-physical device buffer size
-#define BUFFER_SIZE 8192
+#define BUFFER_SIZE 1024
 
 std::vector< std::vector<PhyHidDevIn *> > HidInManager::the_matrix;
 XThread * HidInManager::the_thread = NULL;
@@ -502,8 +501,6 @@ void HidInManager::init()
         }
 #endif
         
-        m_event_buffer = g_vm->create_event_buffer();
-        
         has_init = TRUE;
         
         EM_poplog();
@@ -612,6 +609,12 @@ void HidInManager::cleanup()
             SAFE_DELETE( msg_buffer );
         }
         
+        if(m_event_buffer)
+        {
+            if(g_vm) g_vm->destroy_event_buffer(m_event_buffer);
+            m_event_buffer = NULL;
+        }
+        
         // init
         has_init = FALSE;
         //*/
@@ -625,6 +628,11 @@ t_CKBOOL HidInManager::open( HidIn * hin, t_CKINT device_type, t_CKINT device_nu
     if( has_init == FALSE )
     {
         init();
+    }
+    
+    if(m_event_buffer == NULL)
+    {
+        m_event_buffer = g_vm->create_event_buffer();
     }
 
     // check type
@@ -699,6 +707,11 @@ t_CKBOOL HidInManager::open( HidIn * hin, t_CKINT device_type, std::string & dev
     if( has_init == FALSE )
     {
         init();
+    }
+    
+    if(m_event_buffer == NULL)
+    {
+        m_event_buffer = g_vm->create_event_buffer();
     }
     
     t_CKINT device_type_start = 1;

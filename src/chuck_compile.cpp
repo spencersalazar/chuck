@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_compile.cpp
 // desc: chuck compile system unifying parser, type checker, and emitter
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2005 - original
 //-----------------------------------------------------------------------------
 #include "chuck_compile.h"
@@ -45,6 +44,8 @@
 #include "ulib_math.h"
 #include "ulib_std.h"
 #include "ulib_opsc.h"
+#include "ulib_regex.h"
+#include "chuck_io.h"
 
 #if defined(__PLATFORM_WIN32__)
 #include "dirent_win32.h"
@@ -206,6 +207,8 @@ t_CKBOOL Chuck_Compiler::go( const string & filename, FILE * fd, const char * st
     t_CKBOOL ret = TRUE;
     Chuck_Context * context = NULL;
 
+    EM_reset_msg();
+    
     // check to see if resolve dependencies automatically
     if( !m_auto_depend )
     {
@@ -555,6 +558,11 @@ t_CKBOOL load_internal_modules( Chuck_Compiler * compiler )
     // load it
     type_engine_load_context( env, context );
     
+//#ifndef __DISABLE_MIDI__
+    if( !init_class_Midi( env ) ) goto error;
+    if( !init_class_MidiRW( env ) ) goto error;
+//#endif // __DISABLE_MIDI__
+
     // load
     EM_log( CK_LOG_SEVERE, "module osc..." );
     load_module( env, osc_query, "osc", "global" );
@@ -579,13 +587,12 @@ t_CKBOOL load_internal_modules( Chuck_Compiler * compiler )
     if( !load_module( env, libmath_query, "Math", "global" ) ) goto error;
     EM_log( CK_LOG_SEVERE, "class 'opsc'..." );
     if( !load_module( env, opensoundcontrol_query, "opsc", "global" ) ) goto error;
+    EM_log( CK_LOG_SEVERE, "class 'RegEx'..." );
+    if( !load_module( env, regex_query, "RegEx", "global" ) ) goto error;
     // if( !load_module( env, net_query, "net", "global" ) ) goto error;
     
-#ifndef __DISABLE_MIDI__
-    if( !init_class_Midi( env ) ) goto error;
-    if( !init_class_MidiRW( env ) ) goto error;
-#endif // __DISABLE_MIDI__
     if( !init_class_HID( env ) ) goto error;
+    if( !init_class_serialio( env ) ) goto error;
         
     // clear context
     type_engine_unload_context( env );

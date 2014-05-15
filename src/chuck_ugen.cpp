@@ -1,35 +1,37 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
-// name: chuck_ugen.cpp
+// file: chuck_ugen.cpp
 // desc: chuck unit generator interface
 //
-// authors: Ge Wang (gewang@cs.princeton.edu)
-//          Perry R. Cook (prc@cs.princeton.edu)
+// authors: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+//          Rebecca Fiebrink (fiebrink@cs.princeton.edu)
+//          Spencer Salazar (spencer@ccrma.stanford.edu)
 // date: spring 2004 - 1.1
 //       spring 2005 - 1.2
+//       spring 2007 - UAna
 //-----------------------------------------------------------------------------
 #include "chuck_ugen.h"
 #include "chuck_instr.h"
@@ -356,6 +358,38 @@ t_CKBOOL Chuck_UGen::set_max_src( t_CKUINT num )
 t_CKUINT Chuck_UGen::get_num_src()
 {
     return m_num_src;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: src_chan()
+// desc: added 1.3.3.1
+//       destination ugen for a given source channel
+//-----------------------------------------------------------------------------
+Chuck_UGen *Chuck_UGen::src_chan( t_CKUINT chan )
+{
+    if( this->m_num_outs == 1)
+        return this;
+    return m_multi_chan[chan%m_num_outs];
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: dst_for_src_chan()
+// desc: added 1.3.3.1
+//       destination ugen for a given source channel
+//-----------------------------------------------------------------------------
+Chuck_UGen *Chuck_UGen::dst_for_src_chan( t_CKUINT chan )
+{
+    if( this->m_num_ins == 1)
+        return this;
+    if( chan < this->m_num_ins )
+        return m_multi_chan[chan];
+    return NULL;
 }
 
 
@@ -1448,3 +1482,73 @@ t_CKBOOL Chuck_UAna::system_tock( t_CKTIME now )
 
     return TRUE;
 }
+
+
+//-----------------------------------------------------------------------------
+// name: ugen_generic_num_in()
+// dsec: get number of input channels for ugen or ugen array
+//-----------------------------------------------------------------------------
+t_CKINT ugen_generic_num_in( Chuck_Object * obj, t_CKBOOL isArray )
+{
+    if(isArray)
+        return ((Chuck_Array4 *) obj)->size();
+    else
+        return ((Chuck_UGen *) obj)->m_num_ins;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: ugen_generic_get_src()
+// dsec: get source channel given a ugen or ugen array
+//-----------------------------------------------------------------------------
+Chuck_UGen *ugen_generic_get_src( Chuck_Object * obj, t_CKINT chan, t_CKBOOL isArray )
+{
+    if( isArray )
+    {
+        if( chan < ( (Chuck_Array4 *) obj )->size() && chan >= 0 )
+        {
+            Chuck_UGen *src = NULL;
+            ((Chuck_Array4 *) obj)->get( chan, (t_CKUINT *) &src );
+            return src;
+        }
+        else
+        {
+            return NULL;
+        }
+    }
+    else
+    {
+        return ((Chuck_UGen *) obj)->src_chan( chan );
+    }
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: ugen_generic_get_dst()
+// dsec: get destination channel given a ugen or array object
+//-----------------------------------------------------------------------------
+Chuck_UGen *ugen_generic_get_dst( Chuck_Object * obj, t_CKINT chan, t_CKBOOL isArray )
+{
+    if( isArray )
+    {
+        if( chan < ((Chuck_Array4 *) obj)->size() && chan >= 0 )
+        {
+            Chuck_UGen *dst = NULL;
+            ( (Chuck_Array4 *) obj )->get( chan, (t_CKUINT *) &dst );
+            return dst;
+        }
+        else
+        {
+            return NULL;
+        }
+    }
+    else
+    {
+        return ((Chuck_UGen *) obj)->dst_for_src_chan( chan );
+    }
+}
+
+
+

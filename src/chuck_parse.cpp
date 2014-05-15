@@ -1,34 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_parse.cpp
-// desc: chuck parser interface
+// desc: chuck parser interface (using flex and bison)
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
-// date: Summer 2005
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+// date: Autumn 2002 - original in chuck_main.cpp
+//       Autumn 2005 - this file
 //-----------------------------------------------------------------------------
 #include "chuck_parse.h"
 #include "chuck_errmsg.h"
@@ -43,6 +43,8 @@ static char g_filename[1024] = "";
 extern "C" { 
     extern FILE *yyin;
 }
+
+
 
 
 //-----------------------------------------------------------------------------
@@ -61,6 +63,34 @@ FILE * open_cat_ck( c_str fname )
     return fd;
 }
 
+
+
+//-----------------------------------------------------------------------------
+// name: win32_tmpfile()
+// desc: replacement for broken tmpfile() on Windows Vista + 7
+//-----------------------------------------------------------------------------
+#ifdef __PLATFORM_WIN32__
+
+#include <windows.h>
+
+FILE *win32_tmpfile()
+{
+    char tmp_path[MAX_PATH];
+    char file_path[MAX_PATH];
+    FILE * file = NULL;
+    
+    if(GetTempPath(256, tmp_path) == 0)
+        return NULL;
+    
+    if(GetTempFileName(tmp_path, "mA", 0, file_path) == 0)
+        return NULL;
+    
+    file = fopen(file_path, "wb+D");
+    
+    return file;
+}
+
+#endif
 
 
 
@@ -86,7 +116,11 @@ t_CKBOOL chuck_parse( c_constr fname, FILE * fd, c_constr code )
         // !
         assert( fd == NULL );
         // generate temp file
+#ifdef __PLATFORM_WIN32__
+        fd = win32_tmpfile();
+#else
         fd = tmpfile();
+#endif
         // flag it to close
         clo = TRUE;
         // write

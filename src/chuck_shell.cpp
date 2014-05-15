@@ -1,38 +1,38 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_shell.cpp
-// desc: ...
+// desc: chuck shell implementation
 //
-// author: Spencer Salazar (ssalazar@princeton.edu)
+// author: Spencer Salazar (spencer@ccrma.stanford.edu)
 // date: Autumn 2005
 //-----------------------------------------------------------------------------
-
 #include "chuck_shell.h"
 #include "chuck_otf.h"
 #include "util_network.h"
+#include "util_string.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -161,6 +161,31 @@ void tokenize_string( string str, vector< string > & tokens)
         tokens.push_back( string( str, j, i - j ) );
     }
 }
+
+//-----------------------------------------------------------------------------
+// name: win32_tmpnam()
+// desc: replacement for broken tmpnam() on Windows Vista + 7
+// file_path should be at least MAX_PATH characters. 
+//-----------------------------------------------------------------------------
+#ifdef __PLATFORM_WIN32__
+
+#include <windows.h>
+
+int win32_tmpnam(char *file_path)
+{
+    char tmp_path[MAX_PATH];
+    
+    if(GetTempPath(256, tmp_path) == 0)
+        return 0;
+    
+    if(GetTempFileName(tmp_path, "cksh", 0, file_path) == 0)
+        return 0;
+
+    return 1;
+}
+
+#endif
+
 
 //-----------------------------------------------------------------------------
 // name: shell_cb
@@ -583,7 +608,7 @@ void Chuck_Shell::continue_code( string & in )
 void Chuck_Shell::do_code( string & code, string & out, string command )
 {
     // open a temporary file
-#if defined(__LINUX_ALSA__) || defined(__LINUX_OSS__) || defined(__LINUX_JACK__)
+#if defined(__PLATFORM_LINUX__) || defined(__MACOSX_CORE__)
     char tmp_dir[] = "/tmp";
     char * tmp_filepath = new char [32];
     strncpy( tmp_filepath, "/tmp/chuck_file.XXXXXX", 32 );
@@ -605,14 +630,18 @@ void Chuck_Shell::do_code( string & code, string & out, string command )
         return;
     }
 #else
-    char * tmp_filepath = tmpnam( NULL );
-    if( tmp_filepath == NULL )
+    char tmp_filepath1[MAX_PATH];
+    win32_tmpnam(tmp_filepath1);
+
+    if( tmp_filepath1 == NULL )
     {
         out += string( "shell: error: unable to generate tmpfile name\n" );
         prompt = variables["COMMAND_PROMPT"];
         return;
     }
     
+    string tmp_filepath_stl = normalize_directory_separator(string(tmp_filepath1));
+    const char *tmp_filepath = tmp_filepath_stl.c_str();
     FILE * tmp_file = fopen( tmp_filepath, "w" );
     if( tmp_file == NULL )
     {
@@ -639,7 +668,7 @@ void Chuck_Shell::do_code( string & code, string & out, string command )
     DeleteFile( tmp_filepath );
 #endif // __PLATFORM_WIN32__
 
-#if defined(__LINUX_ALSA__) || defined(__LINUX_OSS__) || defined(__LINUX_JACK__)
+#if defined(__PLATFORM_LINUX__)
     delete[] tmp_filepath;
 #endif
 

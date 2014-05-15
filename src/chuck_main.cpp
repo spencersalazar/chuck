@@ -1,36 +1,36 @@
-    /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+/*----------------------------------------------------------------------------
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2003 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
   
 //-----------------------------------------------------------------------------
 // file: chuck_main.cpp
 // desc: chuck entry point
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // additional contributors:
 //         Ananya Misra (amisra@cs.princeton.edu)
 //         Spencer Salazar (spencer@ccrma.stanford.edu)
+//         Perry R. Cook (prc@cs.princeton.edu)
 // date: version 1.1.x.x - Autumn 2002
 //       version 1.2.x.x - Autumn 2004
 //       version 1.3.x.x - Spring 2012
@@ -231,8 +231,10 @@ static void version()
     platform = "linux (alsa)";
 #elif defined(__LINUX_OSS__)
     platform = "linux (oss)";
-#elif defined(__LINUX_JACK__)
+#elif defined(__LINUX_JACK__) || defined(__UNIX_JACK__)
     platform = "linux (jack)";
+#elif defined(__LINUX_PULSE__)
+    platform = "linux (pulse)";
 #elif defined(__MACOSX_UB__)
     platform = "mac os x : universal binary";
 #elif defined(__MACOSX_CORE__) && defined(__LITTLE_ENDIAN__)
@@ -849,6 +851,8 @@ static void usage()
         EM_poplog();
     }
     
+    compiler->env->load_user_namespace();
+    
     // log
     EM_log( CK_LOG_SEVERE, "starting compilation..." );
     // push indent
@@ -886,7 +890,7 @@ static void usage()
 
         // construct full path to be associated with the file so me.sourceDir() works
         // (added 1.3.0.0)
-        std::string full_path = cwd + filename;
+        std::string full_path = get_full_path(filename);
         
         // parse, type-check, and emit (full_path added 1.3.0.0)
         if( !compiler->go( filename, NULL, NULL, full_path ) )

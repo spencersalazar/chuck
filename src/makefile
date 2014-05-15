@@ -3,8 +3,8 @@ DESTDIR=/usr/bin
 # default target: print usage message and quit
 current: 
 	@echo "[chuck build]: please use one of the following configurations:"
-	@echo "   make linux-alsa, make linux-jack, make linux-oss,"
-	@echo "   make osx, make osx-ub, or make win32"
+	@echo "   make linux-alsa, make linux-jack, make linux-pulse,"
+	@echo "   make osx, make osx-ub, make cygwin, or make win32"
 
 install:
 	cp $(wildcard chuck chuck.exe) $(DESTDIR)/
@@ -17,16 +17,21 @@ MAKECMDGOALS:=$(.DEFAULT_GOAL)
 endif
 endif
 
-.PHONY: osx linux-oss linux-jack linux-alsa win32 osx-rl
-osx linux-oss linux-jack linux-alsa win32 osx-rl: chuck
+.PHONY: osx linux-pulse linux-jack linux-alsa cygwin osx-rl
+osx linux-pulse linux-jack linux-alsa cygwin osx-rl: chuck
 
-CK_VERSION=1.3.2.0-beta-1
+win32:
+	make -f makefile.win32
+
+CK_VERSION=1.3.3.1-beta-3
 
 LEX=flex
 YACC=bison
 CC=gcc
-CXX=gcc
+CXX=g++
 LD=g++
+
+CFLAGS+=-I. -Ilo
 
 ifneq ($(CHUCK_STAT),)
 CFLAGS+= -D__CHUCK_STAT_TRACK__
@@ -50,8 +55,8 @@ ifneq (,$(strip $(filter osx bin-dist-osx,$(MAKECMDGOALS))))
 include makefile.osx
 endif
 
-ifneq (,$(strip $(filter linux-oss,$(MAKECMDGOALS))))
-include makefile.oss
+ifneq (,$(strip $(filter linux-pulse,$(MAKECMDGOALS))))
+include makefile.pulse
 endif
 
 ifneq (,$(strip $(filter linux-jack,$(MAKECMDGOALS))))
@@ -62,8 +67,8 @@ ifneq (,$(strip $(filter linux-alsa,$(MAKECMDGOALS))))
 include makefile.alsa
 endif
 
-ifneq (,$(strip $(filter win32,$(MAKECMDGOALS))))
-include makefile.win32
+ifneq (,$(strip $(filter cygwin,$(MAKECMDGOALS))))
+include makefile.cygwin
 endif
 
 ifneq (,$(strip $(filter osx-rl,$(MAKECMDGOALS))))
@@ -77,19 +82,25 @@ CXXSRCS+= chuck_absyn.cpp chuck_parse.cpp chuck_errmsg.cpp \
 	chuck_vm.cpp chuck_instr.cpp chuck_scan.cpp chuck_type.cpp chuck_emit.cpp \
 	chuck_compile.cpp chuck_dl.cpp chuck_oo.cpp chuck_lang.cpp chuck_ugen.cpp \
 	chuck_main.cpp chuck_otf.cpp chuck_stats.cpp chuck_bbq.cpp chuck_shell.cpp \
-	chuck_console.cpp chuck_globals.cpp digiio_rtaudio.cpp hidio_sdl.cpp \
+	chuck_console.cpp chuck_globals.cpp chuck_io.cpp \
+    digiio_rtaudio.cpp hidio_sdl.cpp \
 	midiio_rtmidi.cpp RtAudio/RtAudio.cpp rtmidi.cpp ugen_osc.cpp ugen_filter.cpp \
 	ugen_stk.cpp ugen_xxx.cpp ulib_machine.cpp ulib_math.cpp ulib_std.cpp \
-	ulib_opsc.cpp util_buffers.cpp util_console.cpp \
-	util_string.cpp util_thread.cpp util_opsc.cpp \
+	ulib_opsc.cpp ulib_regex.cpp util_buffers.cpp util_console.cpp \
+	util_string.cpp util_thread.cpp util_opsc.cpp util_serial.cpp \
 	util_hid.cpp uana_xform.cpp uana_extract.cpp
+LO_CSRCS+= lo/address.c lo/blob.c lo/bundle.c lo/message.c lo/method.c \
+    lo/pattern_match.c lo/send.c lo/server.c lo/server_thread.c lo/timetag.c
 
 COBJS=$(CSRCS:.c=.o)
 CXXOBJS=$(CXXSRCS:.cpp=.o)
-OBJS=$(COBJS) $(CXXOBJS)
+LO_COBJS=$(LO_CSRCS:.c=.o)
+OBJS=$(COBJS) $(CXXOBJS) $(LO_COBJS)
+
+LO_CFLAGS=-DHAVE_CONFIG_H -I.
 
 # remove -arch options
-CFLAGSDEPEND?=$(CFLAGS)
+CFLAGSDEPEND=$(CFLAGS)
 
 ifneq (,$(ARCHS))
 ARCHOPTS=$(addprefix -arch ,$(ARCHS))
@@ -117,17 +128,29 @@ chuck.tab.c chuck.tab.h: chuck.y
 chuck.yy.c: chuck.lex
 	$(LEX) -ochuck.yy.c chuck.lex
 
+chuck_win32.c: chuck.yy.c
+	$(LEX) --nounistd -ochuck.yy.c chuck.lex
+	cat chuck.tab.c chuck.yy.c > $@
+
+chuck_win32.h: chuck.tab.h
+	cat chuck.tab.h > $@
+
 $(COBJS): %.o: %.c
 	$(CC) $(CFLAGS) $(ARCHOPTS) -c $< -o $@
-	@$(CC) -MM $(CFLAGSDEPEND) $< > $*.d
+	@$(CC) -MM -MQ "$@" $(CFLAGSDEPEND) $< > $*.d
+
+$(LO_COBJS): %.o: %.c
+	$(CC) $(CFLAGS) $(LO_CFLAGS) $(ARCHOPTS) -c $< -o $@
+	@$(CC) -MM -MQ "$@" $(CFLAGSDEPEND) $(LO_CFLAGS) $< > $*.d
 
 $(CXXOBJS): %.o: %.cpp
 	$(CXX) $(CFLAGS) $(ARCHOPTS) -c $< -o $@
-	@$(CXX) -MM $(CFLAGSDEPEND) $< > $*.d
+	@$(CXX) -MM -MQ "$@" $(CFLAGSDEPEND) $< > $*.d
 
 clean: 
-	@rm -f $(wildcard chuck chuck.exe) *.o *.d $(OBJS) $(patsubst %.o,%.d,$(OBJS)) \
-	*~ chuck.output chuck.tab.h chuck.tab.c chuck.yy.c $(DIST_DIR){,.tgz,.zip}
+	@rm -rf $(wildcard chuck chuck.exe) *.o *.d $(OBJS) \
+         $(patsubst %.o,%.d,$(OBJS)) *~ chuck.output chuck.tab.h chuck.tab.c \
+         chuck.yy.c $(DIST_DIR){,.tgz,.zip} Release Debug
 	
 
 # ------------------------------------------------------------------------------
@@ -178,16 +201,16 @@ bin-dist-win32:
 .PHONY: src-dist
 src-dist:
 # clean out old dists
-	-rm -rf $(DIST_DIR){,.tgz,.zip}
+	rm -rf $(DIST_DIR) $(DIST_DIR){.tgz,.zip}
 # create directories
 	mkdir $(DIST_DIR) $(DIST_DIR)/doc
 # copy src
-	svn export $(CK_SVN)/trunk/src $(DIST_DIR)/src &> /dev/null
+	svn export $(CK_SVN)/trunk/src $(DIST_DIR)/src 2>&1 > /dev/null
 	rm -rf $(DIST_DIR)/src/{examples,test}
 # copy manual + notes
 	cp ../doc/manual/ChucK_manual.pdf $(addprefix ../notes/doc/,$(DOC_NOTES)) $(DIST_DIR)/doc
 # copy examples
-	svn export $(CK_SVN)/trunk/src/examples $(DIST_DIR)/examples &> /dev/null
+	svn export $(CK_SVN)/trunk/src/examples $(DIST_DIR)/examples 2>&1 > /dev/null
 #cp -r examples $(DIST_DIR)/examples
 # remove .svn directories
 #-find $(DIST_DIR)/examples/ -name '.svn' -exec rm -rf '{}' \; &> /dev/null

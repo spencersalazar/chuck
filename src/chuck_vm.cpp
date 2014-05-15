@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_vm.cpp
-// desc: ...
+// desc: chuck virtual machine
 //
-// authors: Ge Wang (gewang@cs.princeton.edu)
-//          Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002
 //-----------------------------------------------------------------------------
 #include "chuck_vm.h"
@@ -39,6 +38,7 @@
 #include "chuck_globals.h"
 #include "chuck_lang.h"
 #include "ugen_xxx.h"
+#include "chuck_io.h"
 
 #include <algorithm>
 using namespace std;
@@ -50,6 +50,15 @@ using namespace std;
   #include <pthread.h>
 #endif
 
+
+#define CK_VM_DEBUG_ENABLE (0)
+
+#if CK_VM_DEBUG_ENABLE
+#define CK_VM_DEBUG(x) x
+#include <typeinfo>
+#else
+#define CK_VM_DEBUG(x)
+#endif // CK_VM_DEBUG_ENABLE
 
 
 
@@ -527,7 +536,11 @@ t_CKBOOL Chuck_VM::shutdown()
     SAFE_RELEASE( m_dac );
     SAFE_RELEASE( m_adc );
     SAFE_RELEASE( m_bunghole );
-
+    
+    if( m_main_thread_quit )
+        m_main_thread_quit( m_main_thread_bindle );
+    clear_main_thread_hook();
+    
     m_init = FALSE;
 
     // pop indent
@@ -747,6 +760,10 @@ t_CKBOOL Chuck_VM::run( t_CKINT num_samps )
 // vm stop here
 vm_stop:
     m_running = FALSE;
+    
+    if( m_main_thread_quit )
+        m_main_thread_quit( m_main_thread_bindle );
+    clear_main_thread_hook();
 
     // log
     EM_log( CK_LOG_SYSTEM, "virtual machine stopped..." );
@@ -783,9 +800,6 @@ t_CKBOOL Chuck_VM::stop( )
     m_running = FALSE;
     Digitalio::m_end = TRUE;
     
-    if( m_main_thread_quit )
-        m_main_thread_quit( m_main_thread_bindle );
-
     return TRUE;
 }
 
@@ -1019,13 +1033,33 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         t_CKUINT xid = m_shred_id;
         EM_error3( "[chuck](VM): removing all (%i) shreds...", m_num_shreds );
         Chuck_VM_Shred * shred = NULL;
-
+        
         while( m_num_shreds && xid > 0 )
         {
             if( m_shreduler->remove( shred = m_shreduler->lookup( xid ) ) )
                 this->free( shred, TRUE );
             xid--;
         }
+        
+        m_shred_id = 0;
+        m_num_shreds = 0;
+    }
+    else if( msg->type == MSG_CLEARVM ) // added 1.3.2.0
+    {
+        // first removeall
+        t_CKUINT xid = m_shred_id;
+        EM_error3( "[chuck](VM): removing all shreds and resetting type system" );
+        Chuck_VM_Shred * shred = NULL;
+        
+        while( m_num_shreds && xid > 0 )
+        {
+            if( m_shreduler->remove( shred = m_shreduler->lookup( xid ) ) )
+                this->free( shred, TRUE );
+            xid--;
+        }
+        
+        // clear user type system
+        Chuck_Env::instance()->clear_user_namespace();
         
         m_shred_id = 0;
         m_num_shreds = 0;
@@ -1380,6 +1414,21 @@ t_CKBOOL Chuck_VM::set_main_thread_hook( f_mainthreadhook hook,
 
 
 //-----------------------------------------------------------------------------
+// name: set_main_thread_hook()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL Chuck_VM::clear_main_thread_hook()
+{
+    m_main_thread_bindle = NULL;
+    m_main_thread_hook = NULL;
+    m_main_thread_quit = NULL;
+    
+    return TRUE;
+}
+
+
+
+//-----------------------------------------------------------------------------
 // name: Chuck_VM_Stack()
 // desc: ...
 //-----------------------------------------------------------------------------
@@ -1531,6 +1580,7 @@ Chuck_VM_Shred::Chuck_VM_Shred()
     vm_ref = NULL;
     event = NULL;
     xid = 0;
+    m_serials = NULL;
 
     // set
     CK_TRACK( stat = NULL );
@@ -1663,6 +1713,19 @@ t_CKBOOL Chuck_VM_Shred::shutdown()
     // clear it
     code_orig = code = NULL;
 
+    // HACK (added 1.3.2.0): close serial devices
+    if(m_serials != NULL)
+    {
+        for(list<Chuck_IO_Serial *>::iterator i = m_serials->begin(); i != m_serials->end(); i++)
+        {
+            (*i)->release();
+            (*i)->close();
+        }
+        
+        m_serials->clear();
+        SAFE_DELETE(m_serials);
+    }
+    
     // TODO: what to do with next and prev?
     
     return TRUE;
@@ -1750,9 +1813,20 @@ t_CKBOOL Chuck_VM_Shred::run( Chuck_VM * vm )
     // go!
     while( is_running && *vm_running && !is_abort )
     {
+        CK_VM_DEBUG(fprintf(stderr, "CK_VM_DEBUG =--------------------------------=\n"));
+        CK_VM_DEBUG(fprintf(stderr, "CK_VM_DEBUG shred %04lu code %s pc %04lu %s( %s )\n",
+                            this->xid, this->code->name.c_str(), this->pc, instr[pc]->name(), instr[pc]->params()));
+        CK_VM_DEBUG(t_CKBYTE * t_mem_sp = this->mem->sp);
+        CK_VM_DEBUG(t_CKBYTE * t_reg_sp = this->mem->sp);
+        
         // execute the instruction
         instr[pc]->execute( vm, this );
-
+        
+        CK_VM_DEBUG(fprintf(stderr, "CK_VM_DEBUG mem sp in: 0x%08lx out: 0x%08lx\n",
+                            (unsigned long) t_mem_sp, (unsigned long) this->mem->sp));
+        CK_VM_DEBUG(fprintf(stderr, "CK_VM_DEBUG reg sp in: 0x%08lx out: 0x%08lx\n",
+                            (unsigned long) t_reg_sp, (unsigned long) this->reg->sp));
+        
         // set to next_pc;
         pc = next_pc;
         next_pc++;
@@ -1772,6 +1846,34 @@ t_CKBOOL Chuck_VM_Shred::run( Chuck_VM * vm )
 
     // is the shred finished
     return !is_done;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: add_serialio()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKVOID Chuck_VM_Shred::add_serialio( Chuck_IO_Serial * serial )
+{
+    if(m_serials == NULL)
+        m_serials = new list<Chuck_IO_Serial *>;
+    serial->add_ref();
+    m_serials->push_back( serial );
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: add_serialio()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKVOID Chuck_VM_Shred::remove_serialio( Chuck_IO_Serial * serial )
+{
+    if(m_serials == NULL)
+        return;
+    m_serials->remove( serial );
+    serial->release();
 }
 
 

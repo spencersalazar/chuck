@@ -1,35 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_type.h
 // desc: chuck type-system / type-checker
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002 - original
-//       Autumn 2004 - rewrite
+//       Autumn 2005 - rewrite
 //-----------------------------------------------------------------------------
 #ifndef __CHUCK_TYPE_H__
 #define __CHUCK_TYPE_H__
@@ -395,6 +394,7 @@ private:
         global_nspc = global_context.nspc; SAFE_ADD_REF(global_nspc);
         // deprecated stuff
         deprecated.clear(); deprecate_level = 1;
+        user_nspc = NULL;
         // clear
         this->reset();
     }
@@ -404,10 +404,21 @@ protected:
     Chuck_Namespace * global_nspc;
     // global context
     Chuck_Context global_context;
+    // user-global namespace
+    Chuck_Namespace * user_nspc;
 
 public:
     // global namespace
     Chuck_Namespace * global() { return global_nspc; }
+    // global namespace
+    Chuck_Namespace * user()
+    {
+        if(user_nspc == NULL)
+            return global_nspc;
+        else
+            return user_nspc;
+    }
+    
     // namespace stack
     std::vector<Chuck_Namespace *> nspc_stack;
     // expression namespace
@@ -446,16 +457,41 @@ public:
     void reset( )
     {
         // TODO: release stack items?
-        nspc_stack.clear(); nspc_stack.push_back( this->global() );
+        nspc_stack.clear();
+        nspc_stack.push_back( this->global() );
+        if(user_nspc != NULL)
+            nspc_stack.push_back( this->user_nspc );
         // TODO: release stack items?
         class_stack.clear(); class_stack.push_back( NULL );
         // should be at top level
         assert( context == &global_context );
         // assign : TODO: release curr? class_def? func?
         // TODO: need another function, since this is called from constructor
-        curr = this->global(); class_def = NULL; func = NULL;
+        if(user_nspc != NULL)
+            curr = this->user();
+        else
+            curr = this->global();
+        class_def = NULL; func = NULL;
         // make sure this is 0
         class_scope = 0;
+    }
+    
+    void load_user_namespace()
+    {
+        // user namespace
+        user_nspc = new Chuck_Namespace;
+        user_nspc->name = "[user]";
+        user_nspc->parent = global_nspc;
+        SAFE_ADD_REF(global_nspc);
+        SAFE_ADD_REF(user_nspc);
+    }
+    
+    void clear_user_namespace()
+    {
+        if(user_nspc) SAFE_RELEASE(user_nspc->parent);
+        SAFE_RELEASE(user_nspc);
+        load_user_namespace();
+        this->reset();
     }
 
     // top
@@ -539,6 +575,8 @@ struct Chuck_Type : public Chuck_VM_Object
     t_CKBOOL has_constructor;
     // has destructor
     t_CKBOOL has_destructor;
+    // custom allocator
+    f_alloc allocator;
 
 public:
     // constructor
@@ -550,6 +588,7 @@ public:
         info = NULL; func = NULL; def = NULL; is_copy = FALSE; 
         ugen_info = NULL; is_complete = TRUE; has_constructor = FALSE;
         has_destructor = FALSE;
+        allocator = NULL;
     }
 
     // destructor
@@ -828,6 +867,7 @@ a_Id_List str2list( const std::string & path );
 a_Id_List str2list( const std::string & path, t_CKBOOL & is_array );
 const char * howmuch2str( te_HowMuch how_much );
 t_CKBOOL escape_str( char * str_lit, int linepos );
+t_CKINT str2char( const char * char_lit, int linepos );
 
 // default types
 extern Chuck_Type t_void;

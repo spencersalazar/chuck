@@ -1,35 +1,33 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_emit.cpp
 // desc: chuck instruction emitter
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
-// date: Autumn 2002
-//       Autumn 2003 - updated
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+// date: Autumn 2002 - first version
 //       Autumn 2004 - redesign
 //-----------------------------------------------------------------------------
 #include "chuck_emit.h"
@@ -2066,7 +2064,9 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
         break;
     
     case ae_op_neq:
-        if( isa( t_left, &t_string ) && isa( t_right, &t_string ) )
+        if( isa( t_left, &t_string ) && isa( t_right, &t_string )
+            && !isa( t_left, &t_null ) && !isa( t_right, &t_null ) ) // !null
+            // added 1.3.2.0 (spencer)
             emit->append( instr = new Chuck_Instr_Op_string( op ) );
         else if( isa( t_left, &t_object ) && isa( t_right, &t_object ) )
             emit->append( instr = new Chuck_Instr_Neq_int );
@@ -2278,7 +2278,17 @@ t_CKBOOL emit_engine_emit_op_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rhs, 
         // done
         return TRUE;
     }
-
+    
+    // ugen[] => ugen[] (or permutation)
+    if( ( isa( left, &t_ugen ) || ( isa( left, &t_array ) && isa( left->array_type, &t_ugen ) ) ) &&
+        ( isa( right, &t_ugen ) || ( isa( right, &t_array ) && isa( right->array_type, &t_ugen ) ) ) )
+    {
+        // link, flag as NOT unchuck
+        emit->append( new Chuck_Instr_UGen_Array_Link( isa( left, &t_array ), isa( right, &t_array ) ) );
+        // done
+        return TRUE;
+    }
+    
     // time advance
     if( isa( left, &t_dur ) && isa( right, &t_time ) && rhs->s_meta == ae_meta_var )
     {
@@ -2758,6 +2768,10 @@ t_CKBOOL emit_engine_emit_exp_primary( Chuck_Emitter * emit, a_Exp_Primary exp )
         emit->append( new Chuck_Instr_Reg_Push_Imm( temp ) );
         // add reference for string literal (added 1.3.0.2)
         str->add_ref();
+        break;
+            
+    case ae_primary_char:
+        emit->append( new Chuck_Instr_Reg_Push_Imm( str2char(exp->chr, exp->linepos ) ) );
         break;
 
     case ae_primary_array:

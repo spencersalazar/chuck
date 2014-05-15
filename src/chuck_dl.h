@@ -1,34 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // name: chuck_dl.h
 // desc: chuck dynamic linking header
 //
-// authors: Ge Wang (gewang@cs.princeton.edu)
-//          Perry R. Cook (prc@cs.princeton.edu)
+// authors: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 //          Ari Lazier (alazier@cs.princeton.edu)
+//          Spencer Salazar (spencer@ccrma.stanford.edu)
 // mac os code based on apple's open source
 //
 // date: spring 2004 - 1.1
@@ -162,6 +162,9 @@ typedef const Chuck_DL_Api::Api *CK_DL_API;
 #else 
 #define CK_DLL_QUERY(name) CK_DLL_DECLVERSION CK_DLL_EXPORT(t_CKBOOL) ck_##name_query( Chuck_DL_Query * QUERY )
 #endif // __CK_DLL_STATIC__
+// macro for defining ChucK DLL export allocator
+// example: CK_DLL_ALLOC(foo)
+#define CK_DLL_ALLOC(name) CK_DLL_EXPORT(Chuck_Object *) name( Chuck_VM_Shred * SHRED, CK_DL_API API )
 // macro for defining ChucK DLL export constructors
 // example: CK_DLL_CTOR(foo)
 #define CK_DLL_CTOR(name) CK_DLL_EXPORT(void) name( Chuck_Object * SELF, void * ARGS, Chuck_VM_Shred * SHRED, CK_DL_API API )
@@ -217,6 +220,7 @@ extern "C" {
 typedef t_CKUINT (CK_DLL_CALL * f_ck_declversion)();
 typedef t_CKBOOL (CK_DLL_CALL * f_ck_query)( Chuck_DL_Query * QUERY );
 // object
+typedef Chuck_Object * (CK_DLL_CALL * f_alloc)( Chuck_VM_Shred * SHRED, CK_DL_API API );
 typedef t_CKVOID (CK_DLL_CALL * f_ctor)( Chuck_Object * SELF, void * ARGS, Chuck_VM_Shred * SHRED, CK_DL_API API );
 typedef t_CKVOID (CK_DLL_CALL * f_dtor)( Chuck_Object * SELF, Chuck_VM_Shred * SHRED, CK_DL_API API );
 typedef t_CKVOID (CK_DLL_CALL * f_mfun)( Chuck_Object * SELF, void * ARGS, Chuck_DL_Return * RETURN, Chuck_VM_Shred * SHRED, CK_DL_API API );
@@ -551,13 +555,15 @@ struct Chuck_DL_MainThreadHook
 {
 public:
     Chuck_DL_MainThreadHook(f_mainthreadhook hook, f_mainthreadquit quit,
-                    void * bindle, Chuck_VM * vm);
+                            void * bindle, Chuck_VM * vm);
     t_CKBOOL (* const activate)(Chuck_DL_MainThreadHook *);
+    t_CKBOOL (* const deactivate)(Chuck_DL_MainThreadHook *);
     
     Chuck_VM * const m_vm;
     f_mainthreadhook const m_hook;
     f_mainthreadquit const m_quit;
     void * const m_bindle;
+    t_CKBOOL m_active;
 };
 
 

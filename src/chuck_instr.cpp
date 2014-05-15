@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_instr.cpp
-// desc: ...
+// desc: chuck virtual machine instruction set
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002
 //-----------------------------------------------------------------------------
 #include <math.h>
@@ -2779,7 +2778,8 @@ t_CKBOOL initialize_object( Chuck_Object * object, Chuck_Type * type )
             // owner
             ugen->m_multi_chan[i]->owner = ugen;
             // ref count
-            ugen->add_ref();
+            // spencer 2013-5-20: don't add extra ref, to avoid a ref cycle
+            //ugen->add_ref();
         }
         // TODO: alloc channels for uana
     }
@@ -2822,12 +2822,14 @@ Chuck_Object * instantiate_and_initialize_object( Chuck_Type * type, Chuck_VM_Sh
     if( !type->ugen_info )
     {
         // check type TODO: make this faster
-        if( isa( type, &t_event ) ) object = new Chuck_Event;
+        if( type->allocator )
+            object = type->allocator( shred, Chuck_DL_Api::Api::instance() );
+        else if( isa( type, &t_fileio ) ) object = new Chuck_IO_File;
+        else if( isa( type, &t_event ) ) object = new Chuck_Event;
         else if( isa( type, &t_string ) ) object = new Chuck_String;
         // TODO: is this ok?
         else if( isa( type, &t_shred ) ) object = new Chuck_VM_Shred;
         // TODO: is this ok?
-        else if( isa( type, &t_fileio ) ) object = new Chuck_IO_File;
         else object = new Chuck_Object;
     }
     else
@@ -5270,7 +5272,7 @@ Chuck_Instr_UGen_Link::Chuck_Instr_UGen_Link( t_CKBOOL isUpChuck )
 void Chuck_Instr_UGen_Link::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
     Chuck_UGen **& sp = (Chuck_UGen **&)shred->reg->sp;
-
+    
     // pop
     pop_( sp, 2 );
     // check for null
@@ -5279,19 +5281,61 @@ void Chuck_Instr_UGen_Link::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     (*(sp + 1))->add( *sp, m_isUpChuck );
     // push the second
     push_( sp, *(sp + 1) );
-
+    
     return;
-
+    
 null_pointer:
     // we have a problem
-    fprintf( stderr, 
-        "[chuck](VM): NullPointerException: (UGen link) in shred[id=%lu:%s], PC=[%lu]\n",
-        shred->xid, shred->name.c_str(), shred->pc );
-
+    fprintf( stderr,
+            "[chuck](VM): NullPointerException: (UGen link) in shred[id=%lu:%s], PC=[%lu]\n",
+            shred->xid, shred->name.c_str(), shred->pc );
+    
     // do something!
     shred->is_running = FALSE;
     shred->is_done = TRUE;
 }
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: ...
+//-----------------------------------------------------------------------------
+void Chuck_Instr_UGen_Array_Link::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    Chuck_Object **& sp = (Chuck_Object **&)shred->reg->sp;
+    Chuck_Object *src, *dst;
+    t_CKINT num_in;
+    
+    // pop
+    pop_( sp, 2 );
+    // check for null
+    if( !*(sp+1) || !(*sp) ) goto null_pointer;
+    
+    src = *sp;
+    dst = (*(sp + 1));
+    
+    // go for it
+    num_in = ugen_generic_num_in(dst, m_dstIsArray);
+    for( int i = 0; i < num_in; i++ )
+        ugen_generic_get_dst( dst, i, m_dstIsArray )->add( ugen_generic_get_src( src, i, m_srcIsArray ), FALSE);
+    
+    // push the second
+    push_( sp, *(sp + 1) );
+    
+    return;
+    
+null_pointer:
+    // we have a problem
+    fprintf( stderr,
+            "[chuck](VM): NullPointerException: (UGen link) in shred[id=%lu:%s], PC=[%lu]\n",
+            shred->xid, shred->name.c_str(), shred->pc );
+    
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
 
 
 
@@ -5825,7 +5869,10 @@ void Chuck_Instr_Gack::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
                     fprintf( stderr, "%ld ", *(sp) );
             }
             else
-                fprintf( stderr, "%s ", ((Chuck_String *)*(sp))->str.c_str() );
+            {
+                Chuck_String * str = ((Chuck_String *)*(sp));
+                fprintf( stderr, "%s ", str->str.c_str() );
+            }
 
             the_sp += sz_INT; // ISSUE: 64-bit (fixed 1.3.1.0)
         }
@@ -5869,3 +5916,53 @@ const char * Chuck_Instr_Gack::params() const
     sprintf( buffer, "( many types )" );
     return buffer;
 }
+
+
+void throw_exception(Chuck_VM_Shred * shred, const char * name)
+{
+    // we have a problem
+    fprintf( stderr,
+            "[chuck](VM): %s: shred[id=%lu:%s], PC=[%lu]\n",
+            name, shred->xid, shred->name.c_str(), shred->pc );
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+void throw_exception(Chuck_VM_Shred * shred, const char * name, t_CKINT desc)
+{
+    // we have a problem
+    fprintf( stderr,
+            "[chuck](VM): %s: '%li' in shred[id=%lu:%s], PC=[%lu]\n",
+            name, desc, shred->xid, shred->name.c_str(), shred->pc );
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+void throw_exception(Chuck_VM_Shred * shred, const char * name, t_CKFLOAT desc)
+{
+    // we have a problem
+    fprintf( stderr,
+            "[chuck](VM): %s: '%f' in shred[id=%lu:%s], PC=[%lu]\n",
+            name, desc, shred->xid, shred->name.c_str(), shred->pc );
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+void throw_exception(Chuck_VM_Shred * shred, const char * name, const char * desc)
+{
+    // we have a problem
+    fprintf( stderr,
+            "[chuck](VM): %s: %s in shred[id=%lu:%s], PC=[%lu]\n",
+            name, desc, shred->xid, shred->name.c_str(), shred->pc );
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+

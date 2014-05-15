@@ -1,34 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // name: chuck_dl.cpp
-// desc: chuck dynamic linking
+// desc: chuck dynamic linking header
 //
-// authors: Ge Wang (gewang@cs.princeton.edu)
-//          Perry R. Cook (prc@cs.princeton.edu)
+// authors: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 //          Ari Lazier (alazier@cs.princeton.edu)
+//          Spencer Salazar (spencer@ccrma.stanford.edu)
 // mac os code based on apple's open source
 //
 // date: spring 2004 - 1.1
@@ -51,7 +51,7 @@ using namespace std;
 #if defined(__MACOSX_CORE__)
 char g_default_chugin_path[] = "/usr/lib/chuck:/Library/Application Support/ChucK/ChuGins:~/Library/Application Support/ChucK/ChuGins";
 #elif defined(__PLATFORM_WIN32__)
-char g_default_chugin_path[] = "C:\\WINDOWS\\system32\\ChucK";
+char g_default_chugin_path[] = "C:\\WINDOWS\\system32\\ChucK;C:\\Program Files\\ChucK\\chugins";
 #else // Linux/Cygwin
 char g_default_chugin_path[] = "/usr/lib/chuck";
 #endif
@@ -949,7 +949,18 @@ Chuck_DL_Func::~Chuck_DL_Func()
 
 t_CKBOOL ck_mthook_activate(Chuck_DL_MainThreadHook *hook)
 {
-    return hook->m_vm->set_main_thread_hook(hook->m_hook, hook->m_quit, hook->m_bindle);
+    hook->m_active = hook->m_vm->set_main_thread_hook(hook->m_hook,
+                                                      hook->m_quit,
+                                                      hook->m_bindle);
+    return hook->m_active;
+}
+
+t_CKBOOL ck_mthook_deactivate(Chuck_DL_MainThreadHook *hook)
+{
+    if(hook->m_active)
+        return hook->m_vm->clear_main_thread_hook();
+    else
+        return FALSE;
 }
 
 //-----------------------------------------------------------------------------
@@ -957,12 +968,14 @@ t_CKBOOL ck_mthook_activate(Chuck_DL_MainThreadHook *hook)
 // desc: ...
 //-----------------------------------------------------------------------------
 Chuck_DL_MainThreadHook::Chuck_DL_MainThreadHook(f_mainthreadhook hook, f_mainthreadquit quit,
-                                 void * bindle, Chuck_VM * vm) :
+                                                 void * bindle, Chuck_VM * vm) :
 m_hook(hook),
 m_quit(quit),
 m_vm(vm),
 m_bindle(bindle),
-activate(ck_mthook_activate)
+activate(ck_mthook_activate),
+deactivate(ck_mthook_deactivate),
+m_active(FALSE)
 { }
 
 
